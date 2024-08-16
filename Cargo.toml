@@ -1,0 +1,16 @@
+[package]
+name = "schematic_converter"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+quartz_nbt = "0.2.9"
+flate2 = "1.0.31"
+log = "0.4.22"
+
+[dev-dependencies]
+criterion = "0.5.1"
+
+[[bench]]
+name = "conversion_benchmarks"
+harness = false
