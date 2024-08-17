@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Schematic Converter Wasm Test</title>
+</head>
+<body>
+<input type="file" id="fileInput" accept=".litematic,.schematic,.schem">
+<select id="fromFormat">
+    <option value="Litematic">Litematic</option>
+    <option value="Schematic">Schematic</option>
+    <option value="Schem">Schem</option>
+</select>
+<select id="toFormat">
+    <option value="Schematic">Schematic</option>
+    <option value="Schem">Schem</option>
+    <option value="Litematic">Litematic</option>
+</select>
+<button id="convertButton">Convert</button>
+<div id="output"></div>
+<script type="module" src="index.js"></script>
+</body>
+</html>

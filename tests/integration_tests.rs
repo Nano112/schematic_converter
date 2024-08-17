@@ -1,24 +1,27 @@
-use quartz_nbt::io::Flavor;
-use schematic_converter::converters::{litematic_to_schematic, schematic_to_litematic, schematic_to_schem};
-use std::io::Cursor;
+use schematic_converter::{SchematicConverter, SchematicFormat};
 
-
-
-// load the sample litematic file convert to schematic and then to schem 
 #[test]
-fn test_litematic_to_schematic() {
-    let sample_litematic = include_bytes!("test_schematics/quary.litematic");
+fn test_litematic_to_schematic_to_schem() {
+    let sample_litematic = include_bytes!("test_schematics/big_quarry.litematic");
 
-    // ensure the folder exists
     std::fs::create_dir_all("tests/outputs").unwrap();
-    let mut output = Vec::new();
-    let mut output2 = Vec::new();
 
-    litematic_to_schematic(Cursor::new(sample_litematic), &mut output).unwrap();
-    schematic_to_schem(Cursor::new(output), &mut output2).unwrap();
+    let converter = SchematicConverter::new();
 
-    //save both the schematic and the schem
-    // std::fs::write("tests/outputs/sample.schematic", output).unwrap();
-    std::fs::write("tests/outputs/quary.schem", output2).unwrap();
-    // println!("Volume: {}, Bits per block: {}", volume, bits_per_block);
+
+    // Convert Litematic to Schematic
+    let schematic_output = converter.convert(
+        sample_litematic,
+        SchematicFormat::Litematic,
+        SchematicFormat::Schematic
+    ).expect("Failed to convert Litematic to Schematic");
+
+    // Convert Schematic to Schem
+    let schem_output = converter.convert(
+        &schematic_output,
+        SchematicFormat::Schematic,
+        SchematicFormat::Schem
+    ).expect("Failed to convert Schematic to Schem");
+
+    std::fs::write("tests/outputs/big_quarry.schem", schem_output).unwrap();
 }

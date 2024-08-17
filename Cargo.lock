@@ -124,6 +124,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1462739cb27611015575c0c11df5df7601141071f07518d56fcc1be504cbec97"
 
 [[package]]
+name = "console_error_panic_hook"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a06aeb73f470f66dcdbf7223caeebb85984942f22f1adb2a088cf9668146bbbc"
+dependencies = [
+ "cfg-if",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "crc32fast"
 version = "1.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -452,10 +462,12 @@ dependencies = [
 name = "schematic_converter"
 version = "0.1.0"
 dependencies = [
+ "console_error_panic_hook",
  "criterion",
  "flate2",
  "log",
  "quartz_nbt",
+ "wasm-bindgen",
 ]
 
 [[package]]
