@@ -2,7 +2,7 @@ use schematic_converter::{SchematicConverter, SchematicFormat};
 
 #[test]
 fn test_litematic_to_schematic_to_schem() {
-    let sample_litematic = include_bytes!("test_schematics/big_quarry.litematic");
+    let sample_litematic = include_bytes!("test_schematics/sample.litematic");
 
     std::fs::create_dir_all("tests/outputs").unwrap();
 
@@ -23,5 +23,5 @@ fn test_litematic_to_schematic_to_schem() {
         SchematicFormat::Schem
     ).expect("Failed to convert Schematic to Schem");
 
-    std::fs::write("tests/outputs/big_quarry.schem", schem_output).unwrap();
+    std::fs::write("tests/outputs/sample.schem", schem_output).unwrap();
 }

@@ -1,9 +1,9 @@
 use std::io::{Cursor, Read, Write};
 use log::debug;
-use quartz_nbt::{NbtCompound, NbtList, NbtTag};
+use quartz_nbt::{NbtCompound, NbtTag};
 use quartz_nbt::io::Flavor;
 
-pub fn litematic_to_schematic<R: Read, W: Write>(input: R, mut output: W) -> Result<(), Box<dyn std::error::Error>> {
+pub fn litematic_to_schematic<R: Read, W: Write>( input: R, mut output: W) -> Result<(), Box<dyn std::error::Error>> {
     let mut decoder = flate2::read::GzDecoder::new(input);
     let mut decompressed = Vec::new();
     std::io::copy(&mut decoder, &mut decompressed)?;
@@ -12,207 +12,14 @@ pub fn litematic_to_schematic<R: Read, W: Write>(input: R, mut output: W) -> Res
 
     let mut schematic_nbt = NbtCompound::new();
     debug!("litematic: {:?}", litematic_nbt);
-
-    // Handle metadata
     convert_metadata_to_schematic(&litematic_nbt, &mut schematic_nbt)?;
-
-    // Get all regions
-    let regions = litematic_nbt.get::<_, &NbtCompound>("Regions")
-        .map_err(|_| "Missing Regions compound")?;
-
-    // Calculate overall dimensions and offsets
-    let (width, height, length, min_x, min_y, min_z) = calculate_overall_dimensions(regions)?;
-
-    schematic_nbt.insert("Width", NbtTag::Short(width as i16));
-    schematic_nbt.insert("Height", NbtTag::Short(height as i16));
-    schematic_nbt.insert("Length", NbtTag::Short(length as i16));
-    schematic_nbt.insert("Offset", NbtTag::IntArray(vec![min_x, min_y, min_z]));
-
-    // Create unified palette and block data
-    let (palette, block_data) = create_unified_palette_and_data(regions, width, height, length, min_x, min_y, min_z)?;
-
-    schematic_nbt.insert("Palette", NbtTag::Compound(palette));
-    schematic_nbt.insert("PaletteMax", NbtTag::Int(palette.len() as i32));
-    schematic_nbt.insert("BlockData", NbtTag::ByteArray(block_data));
-
-    // Handle entities and block entities
-    let (entities, block_entities) = collect_entities_and_block_entities(regions, min_x, min_y, min_z)?;
-    if !entities.is_empty() {
-        schematic_nbt.insert("Entities", NbtList::from(entities));
-    }
-    if !block_entities.is_empty() {
-        schematic_nbt.insert("BlockEntities", NbtList::from(block_entities));
-    }
-
-    schematic_nbt.insert("Version", NbtTag::Int(2)); // Sponge Schematic version 2
+    convert_palette_to_schematic(&litematic_nbt, &mut schematic_nbt)?;
+    unpack_block_data_to_schematic(&litematic_nbt, &mut schematic_nbt)?;
+    convert_entities_to_schematic(&litematic_nbt, &mut schematic_nbt)?;
 
     quartz_nbt::io::write_nbt(&mut output, None, &schematic_nbt, quartz_nbt::io::Flavor::Uncompressed)?;
+    //debug print the output
     Ok(())
-}
-
-fn calculate_overall_dimensions(regions: &NbtCompound) -> Result<(i32, i32, i32, i32, i32, i32), Box<dyn std::error::Error>> {
-    let mut min_x = i32::MAX;
-    let mut min_y = i32::MAX;
-    let mut min_z = i32::MAX;
-    let mut max_x = i32::MIN;
-    let mut max_y = i32::MIN;
-    let mut max_z = i32::MIN;
-
-    for (_, region) in regions.inner() {
-        if let NbtTag::Compound(region) = region {
-            let position = region.get::<_, &NbtCompound>("Position")?;
-            let size = region.get::<_, &NbtCompound>("Size")?;
-
-            let x = position.get::<_, i32>("x")?;
-            let y = position.get::<_, i32>("y")?;
-            let z = position.get::<_, i32>("z")?;
-            let width = size.get::<_, i32>("x")?;
-            let height = size.get::<_, i32>("y")?;
-            let length = size.get::<_, i32>("z")?;
-
-            min_x = min_x.min(x);
-            min_y = min_y.min(y);
-            min_z = min_z.min(z);
-            max_x = max_x.max(x + width);
-            max_y = max_y.max(y + height);
-            max_z = max_z.max(z + length);
-        }
-    }
-
-    Ok((max_x - min_x, max_y - min_y, max_z - min_z, min_x, min_y, min_z))
-}
-
-fn create_unified_palette_and_data(
-    regions: &NbtCompound,
-    width: i32,
-    height: i32,
-    length: i32,
-    min_x: i32,
-    min_y: i32,
-    min_z: i32
-) -> Result<(NbtCompound, Vec<i8>), Box<dyn std::error::Error>> {
-    let mut unified_palette = NbtCompound::new();
-    let mut block_data = vec![0i8; (width * height * length) as usize];
-    let mut next_palette_id = 0;
-
-    for (_, region) in regions.inner() {
-        if let NbtTag::Compound(region) = region {
-            let position = region.get::<_, &NbtCompound>("Position")?;
-            let size = region.get::<_, &NbtCompound>("Size")?;
-            let palette = region.get::<_, &NbtList>("BlockStatePalette")?;
-            let block_states = region.get::<_, &NbtTag>("BlockStates")?;
-
-            let region_x = position.get::<_, i32>("x")? - min_x;
-            let region_y = position.get::<_, i32>("y")? - min_y;
-            let region_z = position.get::<_, i32>("z")? - min_z;
-            let region_width = size.get::<_, i32>("x")?;
-            let region_height = size.get::<_, i32>("y")?;
-            let region_length = size.get::<_, i32>("z")?;
-
-            let bits_per_block = (palette.len() as f64).log2().ceil() as usize;
-            let mask = (1u64 << bits_per_block) - 1;
-
-            let mut bit_buffer = 0u64;
-            let mut bits_in_buffer = 0;
-            let block_states = if let NbtTag::LongArray(block_states) = block_states {
-                block_states
-            } else {
-                return Err("BlockStates is not a LongArray".into());
-            };
-            let mut block_states_iter = block_states.iter();
-
-            for y in 0..region_height {
-                for z in 0..region_length {
-                    for x in 0..region_width {
-                        while bits_in_buffer < bits_per_block {
-                            if let Some(&long_value) = block_states_iter.next() {
-                                bit_buffer |= (long_value as u64) << bits_in_buffer;
-                                bits_in_buffer += 64;
-                            } else {
-                                return Err("BlockStates array is too short".into());
-                            }
-                        }
-
-                        let palette_id = (bit_buffer & mask) as usize;
-                        bit_buffer >>= bits_per_block;
-                        bits_in_buffer -= bits_per_block;
-
-                        if let NbtTag::Compound(block_state) = &palette[palette_id] {
-                            let block_name = block_state.get::<_, &str>("Name")?;
-                            let mut full_name = block_name.to_string();
-
-                            if let Ok(Some(NbtTag::Compound(properties))) = block_state.get("Properties") {
-                                full_name.push('[');
-                                for (key, value) in properties.inner() {
-                                    full_name.push_str(&format!("{}={},", key, value));
-                                }
-                                full_name.pop(); // Remove last comma
-                                full_name.push(']');
-                            }
-
-                            let unified_id = if let Ok(Some(NbtTag::Int(id))) = unified_palette.get(&full_name) {
-                                *id
-                            } else {
-                                let id = next_palette_id;
-                                unified_palette.insert(full_name, NbtTag::Int(id));
-                                next_palette_id += 1;
-                                id
-                            };
-
-                            let index = ((region_x + x) + (region_z + z) * width + (region_y + y) * width * length) as usize;
-                            block_data[index] = unified_id as i8;
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    Ok((unified_palette, block_data))
-}
-
-fn collect_entities_and_block_entities(
-    regions: &NbtCompound,
-    min_x: i32,
-    min_y: i32,
-    min_z: i32
-) -> Result<(Vec<NbtTag>, Vec<NbtTag>), Box<dyn std::error::Error>> {
-    let mut entities = Vec::new();
-    let mut block_entities = Vec::new();
-
-    for (_, region) in regions.inner() {
-        if let NbtTag::Compound(region) = region {
-            if let Ok(NbtTag::List(region_entities)) = region.get::<_, &NbtTag>("Entities") {
-                for entity in region_entities {
-                    if let NbtTag::Compound(mut entity) = entity.clone() {
-                        if let Ok(Some(NbtTag::List(mut pos))) = entity.get_mut("Pos") {
-                            if let (Some(NbtTag::Double(x)), Some(NbtTag::Double(y)), Some(NbtTag::Double(z))) = (pos.get_mut(0), pos.get_mut(1), pos.get_mut(2)) {
-                                *x -= min_x as f64;
-                                *y -= min_y as f64;
-                                *z -= min_z as f64;
-                            }
-                        }
-                        entities.push(NbtTag::Compound(entity));
-                    }
-                }
-            }
-
-            if let Ok(NbtTag::List(region_block_entities)) = region.get::<_, &NbtTag>("TileEntities") {
-                for block_entity in region_block_entities {
-                    if let NbtTag::Compound(mut block_entity) = block_entity.clone() {
-                        if let Some(NbtTag::IntArray(pos)) = block_entity.get_mut("Pos") {
-                            pos[0] -= min_x;
-                            pos[1] -= min_y;
-                            pos[2] -= min_z;
-                        }
-                        block_entities.push(NbtTag::Compound(block_entity));
-                    }
-                }
-            }
-        }
-    }
-
-    Ok((entities, block_entities))
 }
 
 fn convert_metadata_to_schematic(litematic: &NbtCompound, schematic: &mut NbtCompound) -> Result<(), Box<dyn std::error::Error>> {

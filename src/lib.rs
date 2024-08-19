@@ -1,9 +1,11 @@
-use wasm_bindgen::prelude::*;
 use std::io::Cursor;
+
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::prelude::*;
 
 pub mod converters;
 
-#[wasm_bindgen]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 #[derive(Debug)]
 pub enum SchematicFormat {
     Litematic,
@@ -11,9 +13,9 @@ pub enum SchematicFormat {
     Schem,
 }
 
-#[wasm_bindgen]
 pub struct SchematicConverter;
 
+#[cfg(target_arch = "wasm32")]
 #[wasm_bindgen]
 impl SchematicConverter {
     #[wasm_bindgen(constructor)]
@@ -22,6 +24,24 @@ impl SchematicConverter {
     }
 
     pub fn convert(&self, input: &[u8], from: SchematicFormat, to: SchematicFormat) -> Result<Vec<u8>, JsValue> {
+        self.convert_internal(input, from, to)
+            .map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl SchematicConverter {
+    pub fn new() -> Self {
+        SchematicConverter
+    }
+
+    pub fn convert(&self, input: &[u8], from: SchematicFormat, to: SchematicFormat) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+        self.convert_internal(input, from, to)
+    }
+}
+
+impl SchematicConverter {
+    fn convert_internal(&self, input: &[u8], from: SchematicFormat, to: SchematicFormat) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
         let mut output = Vec::new();
         let result = match (from, to) {
             (SchematicFormat::Litematic, SchematicFormat::Schematic) => {
@@ -35,10 +55,11 @@ impl SchematicConverter {
             }
             _ => Err("Unsupported conversion path".into()),
         };
-        result.map(|_| output).map_err(|e| JsValue::from_str(&e.to_string()))
+        result.map(|_| output)
     }
 }
 
+#[cfg(target_arch = "wasm32")]
 #[wasm_bindgen]
 pub fn init_panic_hook() {
     console_error_panic_hook::set_once();
